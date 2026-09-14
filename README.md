@@ -23,3 +23,23 @@
 
 ```bash
 dotnet build
+
+## Self-contained публікація
+
+Проєкт було опубліковано у self-contained режимі для двох різних RID.
+
+| RID | Розмір publish |
+|---|---:|
+| win-x64 | 77.02 MB |
+| linux-x64 | 78.83 MB |
+
+### Порівняння
+
+Windows-версія має розмір 77.02 MB, а Linux-версія — 78.83 MB.
+
+Linux-версія більша на 1.81 MB.
+
+Команди публікації:
+
+```bash
+dotnet publish src/Cli -c Release -r win-x64 --self-contained true
