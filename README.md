@@ -24,6 +24,7 @@
 ```bash
 dotnet build
 dotnet run --project src/Cli
+```
 
 ## Self-contained οσαλ³κΰφ³ÿ
 
@@ -45,3 +46,4 @@ s
 ```bash
 dotnet publish src/Cli -c Release -r win-x64 --self-contained true
 dotnet publish src/Cli -c Release -r linux-x64 --self-contained true
+```
