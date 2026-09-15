@@ -23,6 +23,7 @@
 
 ```bash
 dotnet build
+dotnet run --project src/Cli
 
 ## Self-contained публікація
 
@@ -33,13 +34,14 @@ dotnet build
 | win-x64 | 77.02 MB |
 | linux-x64 | 78.83 MB |
 
-### Порівняння
+## Порівняння
 
 Windows-версія має розмір 77.02 MB, а Linux-версія — 78.83 MB.
 
 Linux-версія більша на 1.81 MB.
-
+s
 Команди публікації:
 
 ```bash
 dotnet publish src/Cli -c Release -r win-x64 --self-contained true
+dotnet publish src/Cli -c Release -r linux-x64 --self-contained true

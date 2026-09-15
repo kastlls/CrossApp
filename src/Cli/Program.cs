@@ -21,7 +21,8 @@ if (args.Contains("--json"))
 {
     var options = new JsonSerializerOptions
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     Console.WriteLine(JsonSerializer.Serialize(information, options));
