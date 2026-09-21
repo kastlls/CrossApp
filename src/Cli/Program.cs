@@ -1,17 +1,22 @@
-﻿using System.Runtime.InteropServices;
+﻿using System;
+using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using Core;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+// Отримуємо дані середовища через Core (жодних прямих викликів RuntimeInformation тут)
+EnvironmentReport report = EnvironmentInfo.Collect();
+
 var information = new
 {
-    OSDescription = RuntimeInformation.OSDescription,
-    EnvironmentOS = Environment.OSVersion.ToString(),
-    Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-    DotNetVersion = Environment.Version.ToString(),
-    Runtime = RuntimeInformation.FrameworkDescription,
-    ApplicationDirectory = AppContext.BaseDirectory,
-    CurrentDirectory = Environment.CurrentDirectory,
+    OSDescription = report.OsDescription,
+    FrameworkDescription = report.FrameworkDescription,
+    ProcessArchitecture = report.ProcessArchitecture,
+    DetectedRid = report.DetectedRid,
+    ReportedRid = report.ReportedRid,
+    ApplicationDirectory = report.BaseDirectory,
     Domain = "Бібліотека",
     Entities = "Book, BookCopy, Reader, Loan",
     Purpose = "облік видач примірників книг читачам."
@@ -22,7 +27,7 @@ if (args.Contains("--json"))
     var options = new JsonSerializerOptions
     {
         WriteIndented = true,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     Console.WriteLine(JsonSerializer.Serialize(information, options));
@@ -33,13 +38,12 @@ else
     Console.WriteLine("Студент: Кулик Арсен, група: ФЕІ-33");
     Console.WriteLine(new string('-', 52));
 
-    Console.WriteLine($"ОС (OSDescription) : {RuntimeInformation.OSDescription}");
-    Console.WriteLine($"ОС (Environment) : {Environment.OSVersion}");
-    Console.WriteLine($"Архітектура процесу : {RuntimeInformation.ProcessArchitecture}");
-    Console.WriteLine($"Версія .NET (CLR) : {Environment.Version}");
-    Console.WriteLine($"Runtime : {RuntimeInformation.FrameworkDescription}");
-    Console.WriteLine($"Каталог застосунку : {AppContext.BaseDirectory}");
-    Console.WriteLine($"Поточний каталог : {Environment.CurrentDirectory}");
+    Console.WriteLine($"ОС             : {report.OsDescription}");
+    Console.WriteLine($"Runtime        : {report.FrameworkDescription}");
+    Console.WriteLine($"Архітектура    : {report.ProcessArchitecture}");
+    Console.WriteLine($"RID (визначено): {report.DetectedRid}");
+    Console.WriteLine($"RID (від .NET) : {report.ReportedRid}");
+    Console.WriteLine($"Каталог        : {report.BaseDirectory}");
 
     Console.WriteLine(new string('-', 52));
 
