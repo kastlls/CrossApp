@@ -17,6 +17,7 @@ var information = new
     DetectedRid = report.DetectedRid,
     ReportedRid = report.ReportedRid,
     ApplicationDirectory = report.BaseDirectory,
+    BuildNote = report.BuildNote, // Додано сюди для JSON
     Domain = "Бібліотека",
     Entities = "Book, BookCopy, Reader, Loan",
     Purpose = "облік видач примірників книг читачам."
@@ -44,6 +45,7 @@ else
     Console.WriteLine($"RID (визначено): {report.DetectedRid}");
     Console.WriteLine($"RID (від .NET) : {report.ReportedRid}");
     Console.WriteLine($"Каталог        : {report.BaseDirectory}");
+    Console.WriteLine($"TFM Примітка   : {report.BuildNote}"); // Додано сюди для консолі
 
     Console.WriteLine(new string('-', 52));
 
