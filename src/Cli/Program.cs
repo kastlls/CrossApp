@@ -45,7 +45,7 @@ Console.WriteLine($"Runtime        : {report.FrameworkDescription}");
 Console.WriteLine($"Каталог        : {report.BaseDirectory}");
 Console.WriteLine(new string('-', 85));
 
-// --- ЧАСТИНА 2: Імпорт CSV (Лаб 3) ---
+// --- ЧАСТИНА 2: Імпорт CSV/JSON (Лаб 3) ---
 string path = args.FirstOrDefault(a => a != "--json") ?? Path.Combine("data", "sample.csv");
 
 if (!File.Exists(path))
@@ -54,14 +54,29 @@ if (!File.Exists(path))
     return 1;
 }
 
-ImportResult<BookDto> result = BookCsvImporter.Load(path);
+// ДОДАНО: Вибір імпортера за розширенням
+ImportResult<object> result = Path.GetExtension(path).ToLowerInvariant() switch
+{
+    ".csv" => BookCsvImporter.Load(path),
+    ".json" => BookJsonImporter.Load(path),
+    var ext => throw new InvalidOperationException($"Непідтримуваний формат файлу: {ext}")
+};
 
 Console.WriteLine($"Завантажено записів: {result.Items.Count}");
 Console.WriteLine(new string('-', 85));
 
-foreach (BookDto b in result.Items.Take(5))
+// ДОДАНО: Розпізнавання різних типів для виводу
+foreach (object item in result.Items.Take(5))
 {
-    Console.WriteLine($" {b.Id,-6} | {b.Isbn,-17} | {b.Title,-32} | {b.Year,4} | {b.Author ?? "-"}");
+    switch (item)
+    {
+        case BookDto b:
+            Console.WriteLine($" [КНИГА] {b.Id,-6} | {b.Isbn,-17} | {b.Title,-32} | {b.Year,4} | {b.Author ?? "-"}");
+            break;
+        case ReaderDto r:
+            Console.WriteLine($" [ЧИТАЧ] {r.Id,-6} | {r.FullName,-17} | {r.Phone,-32} | {r.Email ?? "-"}");
+            break;
+    }
 }
 
 if (result.Errors.Count > 0)
@@ -73,5 +88,11 @@ if (result.Errors.Count > 0)
         Console.WriteLine($" ! {error}");
     }
 }
+
+// ДОДАНО: Статистика одним рядком
+Console.WriteLine(new string('-', 85));
+int total = result.Items.Count + result.Errors.Count;
+double errorPercent = total > 0 ? (double)result.Errors.Count / total * 100 : 0;
+Console.WriteLine($"СТАТИСТИКА: Усього: {total} | Прийнято: {result.Items.Count} | Пропущено: {result.Errors.Count} | % помилок: {errorPercent:F1}%");
 
 return 0;

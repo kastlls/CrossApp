@@ -7,9 +7,10 @@ public static class BookCsvImporter
 {
     private const char Separator = ';';
 
-    public static ImportResult<BookDto> Load(string path)
+    // Повертаємо object, бо тепер у нас два різні типи: BookDto і ReaderDto
+    public static ImportResult<object> Load(string path)
     {
-        var items = new List<BookDto>();
+        var items = new List<object>();
         var errors = new List<string>();
         string[] lines = File.ReadAllLines(path);
 
@@ -19,7 +20,7 @@ public static class BookCsvImporter
             string line = lines[i];
 
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#')) continue;
-            if (num == 1 && line.StartsWith("id", StringComparison.OrdinalIgnoreCase)) continue;
+            if (num == 1 && line.StartsWith("type", StringComparison.OrdinalIgnoreCase)) continue;
 
             switch (ParseLine(line))
             {
@@ -27,7 +28,7 @@ public static class BookCsvImporter
                 case ParseFailed failed: errors.Add($"рядок {num}: {failed.Reason}"); break;
             }
         }
-        return new ImportResult<BookDto>(items, errors);
+        return new ImportResult<object>(items, errors);
     }
 
     private static ParseOutcome ParseLine(string line)
@@ -35,19 +36,31 @@ public static class BookCsvImporter
         string[] parts = line.Split(Separator, StringSplitOptions.TrimEntries);
         return parts switch
         {
-            { Length: < 4 } => new ParseFailed($"очікую щонайменше 4 колонки, отримав {parts.Length}"),
-            [_, "", _, ..] or [_, _, "", ..] => new ParseFailed("ISBN або назва порожні"),
-            [_, _, _, var year, ..] when !int.TryParse(year, NumberStyles.Integer, CultureInfo.InvariantCulture, out int y) || y < 1450 || y > DateTime.Now.Year
-                => new ParseFailed($"рік '{year}' поза допустимими межами (1450-{DateTime.Now.Year})"),
-            [var id, var isbn, var title, var year]
+            // --- ПАТЕРНИ ДЛЯ КНИГ (префікс "B") ---
+            ["B", _, "", _, ..] or ["B", _, _, "", ..] 
+                => new ParseFailed("ISBN або назва порожні"),
+            ["B", _, _, _, var year, ..] when !int.TryParse(year, NumberStyles.Integer, CultureInfo.InvariantCulture, out int y) || y < 1450 || y > DateTime.Now.Year
+                => new ParseFailed($"рік '{year}' поза межами"),
+            ["B", var id, var isbn, var title, var year]
                 => new ParseOk(new BookDto(id, isbn, title, int.Parse(year, CultureInfo.InvariantCulture))),
-            [var id, var isbn, var title, var year, var author]
+            ["B", var id, var isbn, var title, var year, var author]
                 => new ParseOk(new BookDto(id, isbn, title, int.Parse(year, CultureInfo.InvariantCulture), string.IsNullOrWhiteSpace(author) ? null : author)),
-            _ => new ParseFailed($"занадто багато колонок: {parts.Length}")
+
+            // --- ПАТЕРНИ ДЛЯ ЧИТАЧІВ (префікс "R") ---
+            ["R", var id, var name, var phone] 
+                => new ParseOk(new ReaderDto(id, name, phone)),
+            ["R", var id, var name, var phone, var email] 
+                => new ParseOk(new ReaderDto(id, name, phone, string.IsNullOrWhiteSpace(email) ? null : email)),
+
+            // --- ПОМИЛКИ ПРЕФІКСІВ ---
+            [var prefix, ..] when prefix != "B" && prefix != "R" 
+                => new ParseFailed($"невідомий префікс '{prefix}'"),
+            
+            _ => new ParseFailed($"неправильний формат рядка: {parts.Length} колонок")
         };
     }
 
     private abstract record ParseOutcome;
-    private sealed record ParseOk(BookDto Value) : ParseOutcome;
+    private sealed record ParseOk(object Value) : ParseOutcome;
     private sealed record ParseFailed(string Reason) : ParseOutcome;
 }
