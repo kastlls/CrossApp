@@ -27,7 +27,7 @@ public static class BookJsonImporter
                     string type = typeProp.GetString() ?? "";
                     try
                     {
-                        // Той самий switch, що обирає тип результату
+                        
                         object? parsedItem = type switch
                         {
                             "B" => element.Deserialize<BookDto>(options),
