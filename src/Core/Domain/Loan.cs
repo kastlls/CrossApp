@@ -1,7 +1,15 @@
 using System;
-using Core.Dto; // Підключаємо DTO з 3-го тижня
+using Core.Dto;
 
 namespace Core.Domain;
+
+// 1. Явний стан-перелічування (enum)
+public enum LoanStatus 
+{ 
+    Active,   // Активна видача
+    Closed,   // Успішно повернуто
+    Lost      // Книгу втрачено
+}
 
 public sealed class Loan
 {
@@ -9,59 +17,66 @@ public sealed class Loan
     public string CopyId { get; }
     public string ReaderId { get; }
     public DateTime IssuedOn { get; }
-    
     public DateTime? ReturnedOn { get; private set; }
+    
+    // Властивість з новим enum
+    public LoanStatus Status { get; private set; }
 
-    private Loan(string id, string copyId, string readerId, DateTime issuedOn, DateTime? returnedOn)
+    private Loan(string id, string copyId, string readerId, DateTime issuedOn, DateTime? returnedOn, LoanStatus status)
     {
         Id = id;
         CopyId = copyId;
         ReaderId = readerId;
         IssuedOn = issuedOn;
         ReturnedOn = returnedOn;
+        Status = status;
     }
 
-    // Відкриття нової видачі (вимагає сам об'єкт примірника)
-    public static Loan Open(string id, BookCopy copy, string readerId, DateTime issuedOn)
+    public static Loan Open(string id, BookCopy copy, string readerId, DateTime issuedOn, int activeLoansCount = 0)
     {
-        if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Ідентифікатор обов'язковий", nameof(id));
+        if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Id обов'язковий", nameof(id));
         if (copy == null) throw new ArgumentNullException(nameof(copy));
-        if (string.IsNullOrWhiteSpace(readerId)) throw new ArgumentException("Ідентифікатор читача обов'язковий", nameof(readerId));
+        if (string.IsNullOrWhiteSpace(readerId)) throw new ArgumentException("ReaderId обов'язковий", nameof(readerId));
+        if (activeLoansCount >= 5) throw new InvalidOperationException($"Читач {readerId} має {activeLoansCount} видач. Ліміт.");
 
-        return new Loan(id.Trim(), copy.Id, readerId.Trim(), issuedOn, null);
+        // При створенні статус завжди Active
+        return new Loan(id.Trim(), copy.Id, readerId.Trim(), issuedOn, null, LoanStatus.Active);
     }
 
-    // Внутрішня фабрика для відновлення з файлу (проходить всі перевірки інваріантів)
     public static Loan Restore(string id, string copyId, string readerId, DateTime issuedOn, DateTime? returnedOn)
     {
-        if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Ідентифікатор обов'язковий", nameof(id));
+        if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Id обов'язковий", nameof(id));
         if (string.IsNullOrWhiteSpace(copyId)) throw new ArgumentException("CopyId обов'язковий", nameof(copyId));
         if (string.IsNullOrWhiteSpace(readerId)) throw new ArgumentException("ReaderId обов'язковий", nameof(readerId));
-        
-        // Інваріант: перевірка дати під час відновлення[cite: 11]
-        if (returnedOn.HasValue && returnedOn < issuedOn)
-            throw new ArgumentOutOfRangeException(nameof(returnedOn), returnedOn, "Дата повернення не може бути раніше дати видачі");
+        if (returnedOn.HasValue && returnedOn < issuedOn) throw new ArgumentOutOfRangeException(nameof(returnedOn), returnedOn, "Дата помилкова");
 
-        return new Loan(id.Trim(), copyId.Trim(), readerId.Trim(), issuedOn, returnedOn);
+        var status = returnedOn.HasValue ? LoanStatus.Closed : LoanStatus.Active;
+        return new Loan(id.Trim(), copyId.Trim(), readerId.Trim(), issuedOn, returnedOn, status);
+    }
+
+    // 2. Перевірка допустимих переходів через switch expression
+    public void ChangeStatus(LoanStatus newStatus)
+    {
+        Status = (Status, newStatus) switch
+        {
+            (LoanStatus.Active, LoanStatus.Closed) => newStatus, // Можна успішно закрити
+            (LoanStatus.Active, LoanStatus.Lost) => newStatus,   // Можна позначити як втрачену
+            
+            // Всі інші переходи (наприклад, з Closed у Lost) ЗАБОРОНЕНІ
+            _ => throw new InvalidOperationException($"Неможливий перехід статусу з {Status} у {newStatus}")
+        };
     }
 
     public void Close(DateTime returnedOn)
     {
-        if (ReturnedOn.HasValue)
-            throw new InvalidOperationException($"Видача {Id} вже закрита");
-        if (returnedOn < IssuedOn)
-            throw new ArgumentOutOfRangeException(nameof(returnedOn), returnedOn, "Дата повернення не може бути раніше дати видачі");
-
+        // Перевіряємо через наш новий метод, чи дозволений перехід у статус Closed
+        ChangeStatus(LoanStatus.Closed);
+        
+        if (returnedOn < IssuedOn) throw new ArgumentOutOfRangeException(nameof(returnedOn), returnedOn, "Дата повернення не може бути раніше дати видачі");
         ReturnedOn = returnedOn;
     }
 
-    // --- КРОК 6: Мапінг ToDto та FromDto ---[cite: 4]
-    
     public LoanDto ToDto() => new(Id, CopyId, ReaderId, IssuedOn, ReturnedOn);
-
-    // Відновлення. Використовує Restore, щоб перевірити всі дані перед створенням[cite: 10, 14]
-    public static Loan FromDto(LoanDto dto) =>
-        Restore(dto.Id, dto.CopyId, dto.ReaderId, dto.IssuedOn, dto.ReturnedOn);
-
-    public override string ToString() => $"Видача {Id}: Примірник {CopyId} -> Читач {ReaderId} ({(ReturnedOn.HasValue ? "Закрита" : "Відкрита")})";
+    public static Loan FromDto(LoanDto dto) => Restore(dto.Id, dto.CopyId, dto.ReaderId, dto.IssuedOn, dto.ReturnedOn);
+    public override string ToString() => $"Видача {Id}: Примірник {CopyId} -> Читач {ReaderId} [{Status}]";
 }
