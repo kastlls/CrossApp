@@ -75,3 +75,8 @@ dotnet publish src/Cli -c Release -r win-x64 --self-contained false
 2. **Захист від подвійної видачі:** Неможливо видати примірник, який уже виданий (перевірка стану `IsIssued`). Викидає `InvalidOperationException` у методі `BookCopy.Issue()`.
 3. **Захист від подвійного закриття:** Неможливо закрити видачу, яка вже має дату повернення. Викидає `InvalidOperationException` у методі `Loan.Close()`.
 4. **Хронологія дат:** Дата повернення не може бути раніше дати видачі. Викидає `ArgumentOutOfRangeException` у методі `Loan.Close()`.
+
+## Лабораторна робота 5: Сервісний шар та сховища
+- **Інтерфейс сховища:** `IBookStore` (`src/Core/Abstractions/IBookStore.cs`)
+- **Реалізації сховища:** `InMemoryBookStore` та `FileBookStore`
+- **Сервіс:** `LendingService` (`src/Core/Services/LendingService.cs`)
