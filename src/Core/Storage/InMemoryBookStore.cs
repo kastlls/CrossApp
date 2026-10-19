@@ -8,22 +8,12 @@ namespace Core.Storage;
 
 public sealed class InMemoryBookStore(IEnumerable<BookCopy>? seed = null) : IBookStore
 {
-    private readonly Dictionary<string, BookCopy> _items =
-        (seed ?? []).ToDictionary(b => b.Id, StringComparer.OrdinalIgnoreCase);
-
+    private readonly Dictionary<string, BookCopy> _items = (seed ?? []).ToDictionary(b => b.Id, StringComparer.OrdinalIgnoreCase);
     public IReadOnlyList<BookCopy> List() => _items.Values.ToList();
-
     public BookCopy? GetById(string id) => _items.GetValueOrDefault(id);
-
-    public void Add(BookCopy item)
-    {
-        ArgumentNullException.ThrowIfNull(item);
-        if (_items.ContainsKey(item.Id))
-            throw new InvalidOperationException($"Запис з id={item.Id} уже існує.");
-        _items.Add(item.Id, item);
-    }
-
+    public void Add(BookCopy item) { if (_items.ContainsKey(item.Id)) throw new InvalidOperationException("Дубль"); _items.Add(item.Id, item); }
     public void Update(BookCopy item) => _items[item.Id] = item;
-
     public bool Remove(string id) => _items.Remove(id);
+    // БОНУС 2
+    public IEnumerable<BookCopy> Search(Func<BookCopy, bool> predicate) => List().Where(predicate);
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Core.Domain;
 
@@ -10,4 +11,6 @@ public interface IBookStore
     void Add(BookCopy item);
     void Update(BookCopy item);
     bool Remove(string id);
+    // БОНУС 2: Метод пошуку
+    IEnumerable<BookCopy> Search(Func<BookCopy, bool> predicate);
 }
