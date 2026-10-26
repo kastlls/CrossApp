@@ -3,31 +3,44 @@ using System.IO;
 using System.Linq;
 using Cli;
 using Core.Services;
+using Core.Events;
 
-// Підключення ДОДАТКОВОГО 3 (Фабрика), яка під капотом збирає сховище і декоратор
 var store = StoreFactory.Create(args);
 var service = new LendingService(store);
 
-// --- ВІДНОВЛЕНИЙ НОРМАЛЬНИЙ ВИВІД ЛАБОРАТОРНОЇ ---
 bool useFile = args.Contains("--file");
-Console.WriteLine($"Сховище: {(useFile ? "FileBookStore" : "InMemoryBookStore")}");
+Console.WriteLine($"Сховище: {(useFile ? "FileBookStore" : "InMemoryBookStore")}\n");
 
-var created = service.AddBook("978-9660000001");
-Console.WriteLine($"Додано новий примірник: {created.Id} (ISBN: {created.Isbn})");
+// --- КРОК 3: Підписка локальним методом з виведенням у лог ---
+var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
+Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
 
-service.IssueCopy(created.Id);
-Console.WriteLine($"Після видачі (Find): {service.Find(created.Id)}");
-
-service.ReturnCopy(created.Id);
-Console.WriteLine($"Після повернення (Find): {service.Find(created.Id)}");
-
-Console.WriteLine($"\nУсього записів у сховищі ({service.All().Count}):");
-foreach (var b in service.All())
+void OnLibraryChanged(object? sender, LibraryChangedEventArgs e)
 {
-    Console.WriteLine($" {b.Id,-10} ISBN: {b.Isbn,-16} Видано: {b.IsIssued}");
+    var line = $"{e.At:HH:mm:ss} {e.Kind,-8} {e.Id}";
+    Console.WriteLine(line);
+    File.AppendAllText(logPath, line + Environment.NewLine);
 }
 
-Console.WriteLine("\n=== СЦЕНАРІЇ ВІДМОВИ ===");
+service.Changed += OnLibraryChanged;
+
+// --- КРОК 4: Другий підписник (лямбда із замиканням) ---
+int changes = 0;
+service.Changed += (_, _) => changes++;
+
+// --- КРОК 5: Сценарій (зміни -> відписка -> тиха зміна) ---
+Console.WriteLine("=== СЦЕНАРІЙ: ЗМІНИ І ПОДІЇ ===");
+var created = service.AddBook("978-9660000001");
+service.IssueCopy(created.Id);
+Console.WriteLine($"Подій отримано: {changes}");
+
+Console.WriteLine("\n=== СЦЕНАРІЙ: ВІДПИСКА ОСНОВНОГО ОБРОБНИКА ===");
+service.Changed -= OnLibraryChanged;
+service.ReturnCopy(created.Id); // Тиха операція: у консолі та лозі нічого не буде
+Console.WriteLine($"Після тихого повернення. Подій отримано: {changes} (+1 лише від лямбди-лічильника)");
+
+// --- КРОК 6: Сценарії відмови (подій не має бути) ---
+Console.WriteLine("\n=== СЦЕНАРІЇ ВІДМОВИ (ПОДІЙ НЕ БУДЕ) ===");
 try
 {
     Console.WriteLine("-> Спроба видати неіснуючий примірник B-999:");
@@ -48,13 +61,8 @@ catch (Exception ex)
     Console.WriteLine($"[ПОМИЛКА]: {ex.Message}");
 }
 
-// --- НОВИЙ БЛОК З ДОДАТКОВИМИ ЗАВДАННЯМИ ---
-Console.WriteLine("\n=== ДОДАТКОВЕ 1: Кеш (Декоратор) ===");
-Console.WriteLine("Шукаємо ту саму книгу ще раз. Завдяки CachingBookStore це робиться миттєво з кешу:");
-var cachedBook = service.Find(created.Id);
-Console.WriteLine($"Знайдено з кешу: {cachedBook?.Id}");
-
-Console.WriteLine("\n=== ДОДАТКОВЕ 2: Пошук з Func ===");
+// --- КРОК 7: Делегат Func замість події ---
+Console.WriteLine("\n=== ПОШУК ЧЕРЕЗ FUNC (FindAll) ===");
 service.IssueCopy(created.Id); // видамо знову для тесту
-var issuedBooks = store.Search(b => b.IsIssued == true).ToList();
+var issuedBooks = service.FindAll(b => b.IsIssued == true);
 Console.WriteLine($"Знайдено виданих книг через Func (b => b.IsIssued == true): {issuedBooks.Count}");
