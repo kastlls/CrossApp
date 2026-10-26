@@ -7,18 +7,37 @@ using Core.Events;
 
 namespace Core.Services;
 
-public sealed class LendingService(IBookStore store)
+public sealed class LendingService
 {
-    private readonly IBookStore _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly IBookStore _store;
+    private readonly IEnumerable<INotificationSink> _sinks;
+
+    // ДОДАТКОВЕ 1: Впровадження залежностей (DI) через конструктор
+    public LendingService(IBookStore store, IEnumerable<INotificationSink>? sinks = null)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _sinks = sinks ?? Array.Empty<INotificationSink>();
+    }
+
     public event EventHandler<LibraryChangedEventArgs>? Changed;
 
-    private void OnChanged(string id, LibraryChangeKind kind) =>
-        Changed?.Invoke(this, new LibraryChangedEventArgs(id, kind));
+    private void OnChanged(string id, LibraryChangeKind kind)
+    {
+        var args = new LibraryChangedEventArgs(id, kind);
+        
+        // 1. Сповіщення через стандартну подію (Основне завдання)
+        Changed?.Invoke(this, args);
+        
+        // 2. Сповіщення через DI Sinks (Додаткове завдання 1)
+        foreach (var sink in _sinks)
+        {
+            sink.Notify(args);
+        }
+    }
 
     public BookCopy AddBook(string isbn)
     {
         var id = "B-" + Guid.NewGuid().ToString("N")[..6];
-        // Використовуємо фабричний метод або конструктор з правильними параметрами
         var copy = BookCopy.Create(id, isbn); 
         _store.Add(copy);
         OnChanged(copy.Id, LibraryChangeKind.Added);
@@ -35,7 +54,6 @@ public sealed class LendingService(IBookStore store)
     public void IssueCopy(string id)
     {
         var copy = _store.GetById(id) ?? throw new InvalidOperationException($"Немає запису з id={id}");
-        // Використовуємо доменний метод замість прямого доступу до IsIssued
         copy.Issue(); 
         _store.Update(copy);
         OnChanged(copy.Id, LibraryChangeKind.Issued);
@@ -44,7 +62,6 @@ public sealed class LendingService(IBookStore store)
     public void ReturnCopy(string id)
     {
         var copy = _store.GetById(id) ?? throw new InvalidOperationException($"Немає запису з id={id}");
-        // Використовуємо доменний метод
         copy.Return(); 
         _store.Update(copy);
         OnChanged(copy.Id, LibraryChangeKind.Returned);
@@ -56,4 +73,23 @@ public sealed class LendingService(IBookStore store)
 
     public IReadOnlyList<BookCopy> FindAll(Func<BookCopy, bool> predicate) =>
         _store.List().Where(predicate).ToList();
+
+    // ДОДАТКОВЕ 2: Метод імпорту з Action<string>
+    public int Import(string[] lines, Action<string> onSkipped)
+    {
+        int addedCount = 0;
+        foreach (var line in lines)
+        {
+            // Проста перевірка: чи рядок не порожній і чи схожий на ISBN
+            if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("978-"))
+            {
+                // Повертаємо повідомлення про помилку через Action
+                onSkipped($"Пропущено некоректний рядок: '{line}'");
+                continue;
+            }
+            AddBook(line.Trim());
+            addedCount++;
+        }
+        return addedCount;
+    }
 }
