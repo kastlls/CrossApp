@@ -4,7 +4,6 @@ using System.Linq;
 using Core;
 using Core.Abstractions;
 using Core.Storage;
-
 namespace Cli;
 
 public static class StoreFactory

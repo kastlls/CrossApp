@@ -1,26 +1,36 @@
-using System.Collections.Generic;
-using Core.Domain;
+using System;
+using Core.Services;
 
 namespace Core;
 
 public static class SampleData
 {
-    public static IEnumerable<BookCopy> Books() =>
-    [
-        BookCopy.Create("B-001", "978-0132350884"),
-        BookCopy.Create("B-002", "978-0201633610"),
-        BookCopy.Create("B-003", "978-0134494166"),
-        BookCopy.Create("B-004", "978-0321125217"),
-        BookCopy.Create("B-005", "978-0135974445"),
-        BookCopy.Create("B-006", "978-0201485677"),
-        BookCopy.Create("B-007", "978-0321127426"),
-        BookCopy.Create("B-008", "978-0137081073"),
-        BookCopy.Create("B-009", "978-0596007126"),
-        BookCopy.Create("B-010", "978-1491950357"),
-        BookCopy.Create("B-011", "978-1617294532"),
-        BookCopy.Create("B-012", "978-0134685991"),
-        BookCopy.Create("B-013", "978-0201616224"),
-        BookCopy.Create("B-014", "978-0735619678"),
-        BookCopy.Create("B-015", "978-1449373320")
-    ];
+    public static void Initialize(LendingService service)
+    {
+        // Генеруємо 17 записів з різними ISBN для нормального групування
+        var b1 = service.AddBook("978-001");
+        var b2 = service.AddBook("978-001");
+        var b3 = service.AddBook("978-001");
+        var b4 = service.AddBook("978-002");
+        var b5 = service.AddBook("978-002");
+        var b6 = service.AddBook("978-003");
+        var b7 = service.AddBook("978-003");
+        var b8 = service.AddBook("978-004");
+        var b9 = service.AddBook("978-005");
+        var b10 = service.AddBook("978-006");
+        var b11 = service.AddBook("978-006");
+        var b12 = service.AddBook("978-007");
+        var b13 = service.AddBook("978-008");
+        var b14 = service.AddBook("978-009");
+        var b15 = service.AddBook("978-010");
+        var b16 = service.AddBook("978-010");
+        var b17 = service.AddBook("978-010");
+
+        // Робимо частину книг виданими, щоб працював звіт про доступні (фільтр)
+        service.IssueCopy(b1.Id);
+        service.IssueCopy(b4.Id);
+        service.IssueCopy(b7.Id);
+        service.IssueCopy(b10.Id);
+        service.IssueCopy(b15.Id);
+    }
 }

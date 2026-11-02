@@ -3,96 +3,66 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using Cli;
-using Cli.Sinks;
+using Core;
 using Core.Abstractions;
-using Core.Events;
+using Core.Domain;
+using Core.Reports;
 using Core.Services;
 
 var store = StoreFactory.Create(args);
+var service = new LendingService(store);
 
-// --- ДОДАТКОВЕ 1: Налаштовуємо DI Sinks і передаємо їх у сервіс ---
-var diLogPath = Path.Combine(AppContext.BaseDirectory, "logs", "di_app.log");
-var sinks = new List<INotificationSink> 
-{ 
-    new ConsoleSink(), 
-    new FileSink(diLogPath) 
-};
-var service = new LendingService(store, sinks);
-
-bool useFile = args.Contains("--file");
-Console.WriteLine($"Сховище: {(useFile ? "FileBookStore" : "InMemoryBookStore")}\n");
+// Правильний підхід: ініціалізуємо тестові дані через виклик зовнішнього класу
+SampleData.Initialize(service);
 
 // ==========================================================
-// ОСНОВНЕ ЗАВДАННЯ (Твій попередній робочий код)
+// КРОК 3. Демонстрація відкладеного виконання LINQ
 // ==========================================================
-var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
-Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+Console.WriteLine("\n=== ДЕМО: Відкладене виконання ===");
+var sourceList = service.All().ToList();
+var query = sourceList.Where(b => !b.IsIssued); 
 
-void OnLibraryChanged(object? sender, LibraryChangedEventArgs e)
-{
-    var line = $"{e.At:HH:mm:ss} {e.Kind,-8} {e.Id}";
-    Console.WriteLine(line);
-    File.AppendAllText(logPath, line + Environment.NewLine);
-}
+Console.WriteLine($"Доступних до змін: {query.Count()}"); 
+sourceList.Add(BookCopy.Create("B-TMP99", "978-999")); 
+Console.WriteLine($"Доступних після змін (лічильник виріс): {query.Count()}");
 
-service.Changed += OnLibraryChanged;
-
-int changes = 0;
-service.Changed += (_, _) => changes++;
-
-Console.WriteLine("=== СЦЕНАРІЙ: ЗМІНИ І ПОДІЇ ===");
-var created = service.AddBook("978-9660000001");
-service.IssueCopy(created.Id);
-Console.WriteLine($"Подій отримано: {changes}");
-
-Console.WriteLine("\n=== СЦЕНАРІЙ: ВІДПИСКА ОСНОВНОГО ОБРОБНИКА ===");
-service.Changed -= OnLibraryChanged;
-service.ReturnCopy(created.Id); 
-Console.WriteLine($"Після тихого повернення. Подій отримано: {changes} (+1 лише від лямбди-лічильника)");
-
-Console.WriteLine("\n=== СЦЕНАРІЇ ВІДМОВИ (ПОДІЙ НЕ БУДЕ) ===");
-try
-{
-    Console.WriteLine("-> Спроба видати неіснуючий примірник B-999:");
-    service.IssueCopy("B-999");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"[ПОМИЛКА]: {ex.Message}");
-}
-
-try
-{
-    Console.WriteLine($"-> Спроба додати дублікат ID ({created.Id}):");
-    service.AddBookWithId(created.Id, "978-0000000000");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"[ПОМИЛКА]: {ex.Message}");
-}
-
-Console.WriteLine("\n=== ПОШУК ЧЕРЕЗ FUNC (FindAll) ===");
-service.IssueCopy(created.Id); 
-var issuedBooks = service.FindAll(b => b.IsIssued == true);
-Console.WriteLine($"Знайдено виданих книг через Func (b => b.IsIssued == true): {issuedBooks.Count}");
-
+var snapshot = query.ToList(); 
+sourceList.Clear();
+Console.WriteLine($"У знімку лишилось (не залежить від джерела): {snapshot.Count}");
 
 // ==========================================================
-// ДОДАТКОВЕ ЗАВДАННЯ 2
+// КРОК 4. Підкоманди звітів через switch
 // ==========================================================
-Console.WriteLine("\n=== ДОДАТКОВЕ 2: Метод Import з Action<string> ===");
-string[] importData = 
+Console.WriteLine("\n=== ЗВІТИ (CLI) ===");
+var items = service.All();
+var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "report-top";
+
+switch (command)
 {
-    "978-1111111111", // Валідний
-    "поганий_рядок",   // Невалідний (немає 978-)
-    " ",              // Порожній
-    "978-2222222222"  // Валідний
-};
+    case "report-top":
+        Console.WriteLine("Топ 5 книг (стабільне сортування):");
+        Print(ReportService.TopBooks(items, 5));
+        break;
+    case "report-available":
+        Console.WriteLine("Доступні книги:");
+        Print(ReportService.AvailableBooks(items));
+        break;
+    case "report-groups":
+        Console.WriteLine("Групування за ISBN:");
+        foreach (var g in ReportService.ByIsbn(items))
+            Console.WriteLine($" ISBN {g.Key,-10} | Кількість: {g.Count,3}");
+        break;
+    case "report-sum":
+        var t = ReportService.Totals(items);
+        Console.WriteLine($"Всього позицій: {t.Items}, Видано: {t.Issued}, Відсоток виданих: {t.IssuedPercentage:F2}%");
+        break;
+    default:
+        Console.WriteLine("Доступні команди: report-top | report-available | report-groups | report-sum");
+        break;
+}
 
-// Викликаємо метод імпорту і передаємо лямбду, яка обробить помилкові рядки
-int importedCount = service.Import(
-    importData, 
-    errorMsg => Console.WriteLine($"[ЛОГ ІМПОРТУ]: {errorMsg}") 
-);
-
-Console.WriteLine($"Успішно імпортовано книг: {importedCount}");
+static void Print(IReadOnlyList<StockLine> lines)
+{
+    foreach (var l in lines)
+        Console.WriteLine($" {l.Id,-10} ISBN: {l.Isbn,-12} Видано: {l.IsIssued}");
+}
