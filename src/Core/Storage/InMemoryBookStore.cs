@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Core.Abstractions;
@@ -6,14 +5,15 @@ using Core.Domain;
 
 namespace Core.Storage;
 
-public sealed class InMemoryBookStore(IEnumerable<BookCopy>? seed = null) : IBookStore
+public class InMemoryBookStore : IBookStore
 {
-    private readonly Dictionary<string, BookCopy> _items = (seed ?? []).ToDictionary(b => b.Id, StringComparer.OrdinalIgnoreCase);
-    public IReadOnlyList<BookCopy> List() => _items.Values.ToList();
-    public BookCopy? GetById(string id) => _items.GetValueOrDefault(id);
-    public void Add(BookCopy item) { if (_items.ContainsKey(item.Id)) throw new InvalidOperationException("Дубль"); _items.Add(item.Id, item); }
-    public void Update(BookCopy item) => _items[item.Id] = item;
-    public bool Remove(string id) => _items.Remove(id);
-    // БОНУС 2
-    public IEnumerable<BookCopy> Search(Func<BookCopy, bool> predicate) => List().Where(predicate);
+    private readonly List<BookCopy> _books = new();
+
+    public void Add(BookCopy book) => _books.Add(book);
+    
+    public BookCopy? GetById(string id) => _books.FirstOrDefault(b => b.Id == id);
+    
+    public IEnumerable<BookCopy> GetAll() => _books;
+    
+    public void Update(BookCopy book) { } // Для in-memory колекції окреме оновлення не вимагається
 }

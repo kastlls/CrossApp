@@ -1,95 +1,65 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Core.Abstractions;
 using Core.Domain;
-using Core.Events;
+using Core.Exceptions;
 
 namespace Core.Services;
 
-public sealed class LendingService
+public class LendingService
 {
     private readonly IBookStore _store;
-    private readonly IEnumerable<INotificationSink> _sinks;
+    public event EventHandler<EventArgs>? Changed;
 
-    // ДОДАТКОВЕ 1: Впровадження залежностей (DI) через конструктор
-    public LendingService(IBookStore store, IEnumerable<INotificationSink>? sinks = null)
+    public LendingService(IBookStore store)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _sinks = sinks ?? Array.Empty<INotificationSink>();
     }
 
-    public event EventHandler<LibraryChangedEventArgs>? Changed;
-
-    private void OnChanged(string id, LibraryChangeKind kind)
-    {
-        var args = new LibraryChangedEventArgs(id, kind);
-        
-        // 1. Сповіщення через стандартну подію (Основне завдання)
-        Changed?.Invoke(this, args);
-        
-        // 2. Сповіщення через DI Sinks (Додаткове завдання 1)
-        foreach (var sink in _sinks)
-        {
-            sink.Notify(args);
-        }
-    }
+    public IEnumerable<BookCopy> All() => _store.GetAll();
 
     public BookCopy AddBook(string isbn)
     {
-        var id = "B-" + Guid.NewGuid().ToString("N")[..6];
-        var copy = BookCopy.Create(id, isbn); 
-        _store.Add(copy);
-        OnChanged(copy.Id, LibraryChangeKind.Added);
-        return copy;
-    }
-
-    public void AddBookWithId(string id, string isbn)
-    {
-        var copy = BookCopy.Create(id, isbn);
-        _store.Add(copy);
-        OnChanged(copy.Id, LibraryChangeKind.Added);
+        var id = "B-" + Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper();
+        var book = BookCopy.Create(id, isbn);
+        _store.Add(book);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return book;
     }
 
     public void IssueCopy(string id)
     {
-        var copy = _store.GetById(id) ?? throw new InvalidOperationException($"Немає запису з id={id}");
-        copy.Issue(); 
-        _store.Update(copy);
-        OnChanged(copy.Id, LibraryChangeKind.Issued);
+        var book = _store.GetById(id) ?? throw new ArgumentException("Книгу не знайдено");
+        if (book.IsIssued) throw new DomainException("Примірник уже видано");
+        book.IsIssued = true;
+        _store.Update(book);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ReturnCopy(string id)
     {
-        var copy = _store.GetById(id) ?? throw new InvalidOperationException($"Немає запису з id={id}");
-        copy.Return(); 
-        _store.Update(copy);
-        OnChanged(copy.Id, LibraryChangeKind.Returned);
+        var book = _store.GetById(id) ?? throw new ArgumentException("Книгу не знайдено");
+        if (!book.IsIssued) throw new DomainException("Примірник не був виданий");
+        book.IsIssued = false;
+        _store.Update(book);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public BookCopy? Find(string id) => _store.GetById(id);
-    
-    public IReadOnlyList<BookCopy> All() => _store.List();
-
-    public IReadOnlyList<BookCopy> FindAll(Func<BookCopy, bool> predicate) =>
-        _store.List().Where(predicate).ToList();
-
-    // ДОДАТКОВЕ 2: Метод імпорту з Action<string>
-    public int Import(string[] lines, Action<string> onSkipped)
+    public async Task<int> ImportAsync(IBookImporter importer, string path, CancellationToken ct = default)
     {
-        int addedCount = 0;
-        foreach (var line in lines)
+        var items = await importer.LoadAsync(path, ct);
+        var added = 0;
+        foreach (var item in items)
         {
-            // Проста перевірка: чи рядок не порожній і чи схожий на ISBN
-            if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("978-"))
-            {
-                // Повертаємо повідомлення про помилку через Action
-                onSkipped($"Пропущено некоректний рядок: '{line}'");
-                continue;
-            }
-            AddBook(line.Trim());
-            addedCount++;
+            ct.ThrowIfCancellationRequested();
+            if (_store.GetById(item.Id) is not null) continue; // Ідемпотентність
+            _store.Add(item);
+            Changed?.Invoke(this, EventArgs.Empty);
+            added++;
         }
-        return addedCount;
+        return added;
     }
 }

@@ -12,7 +12,7 @@ public static class StoreFactory
     {
         bool useFile = args.Contains("--file");
         string dataPath = Path.Combine(AppContext.BaseDirectory, "data", "catalog.json");
-        IBookStore baseStore = useFile ? new FileBookStore(dataPath) : new InMemoryBookStore(SampleData.Books());
+        IBookStore baseStore = useFile ? new FileBookStore(dataPath) : new InMemoryBookStore();
         
         // Обертаємо базове сховище у декоратор
         return new CachingBookStore(baseStore);

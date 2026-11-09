@@ -1,28 +1,39 @@
-using System;
 using System.Collections.Generic;
 using Core.Abstractions;
 using Core.Domain;
 
 namespace Core.Storage;
 
-public sealed class CachingBookStore(IBookStore innerStore) : IBookStore
+public class CachingBookStore : IBookStore
 {
+    private readonly IBookStore _inner;
     private readonly Dictionary<string, BookCopy> _cache = new();
+
+    public CachingBookStore(IBookStore inner)
+    {
+        _inner = inner;
+    }
+
+    public void Add(BookCopy book)
+    {
+        _inner.Add(book);
+        _cache[book.Id] = book;
+    }
 
     public BookCopy? GetById(string id)
     {
-        // Тихо повертаємо з кешу, якщо книга там є
         if (_cache.TryGetValue(id, out var cached)) return cached;
-        
-        var item = innerStore.GetById(id);
-        if (item != null) _cache[id] = item;
-        
-        return item;
+        var book = _inner.GetById(id);
+        if (book != null) _cache[id] = book;
+        return book;
     }
 
-    public IReadOnlyList<BookCopy> List() => innerStore.List();
-    public void Add(BookCopy item) => innerStore.Add(item);
-    public void Update(BookCopy item) => innerStore.Update(item);
-    public bool Remove(string id) => innerStore.Remove(id);
-    public IEnumerable<BookCopy> Search(Func<BookCopy, bool> predicate) => innerStore.Search(predicate);
+    // ДОДАНО: реалізація відсутніх методів
+    public IEnumerable<BookCopy> GetAll() => _inner.GetAll();
+    
+    public void Update(BookCopy book)
+    {
+        _inner.Update(book);
+        _cache[book.Id] = book;
+    }
 }

@@ -2,33 +2,58 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using Core.Abstractions;
 using Core.Domain;
-using Core.Dto;
 
 namespace Core.Storage;
 
-public sealed class FileBookStore(string path) : IBookStore
+public class FileBookStore : IBookStore
 {
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
-    private readonly Dictionary<string, BookCopy> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly string _path = Path.GetFullPath(path);
-    private bool _loaded;
+    private readonly string _path;
 
-    private void EnsureLoaded()
+    public FileBookStore(string path)
     {
-        if (_loaded) return;
-        if (File.Exists(_path)) { var dtos = JsonSerializer.Deserialize<List<BookCopyDto>>(File.ReadAllText(_path)) ?? []; foreach (var dto in dtos) { var copy = BookCopy.FromDto(dto); _cache[copy.Id] = copy; } }
-        _loaded = true;
+        _path = path;
+        if (!File.Exists(_path)) File.WriteAllText(_path, "");
     }
-    private void Flush() { Directory.CreateDirectory(Path.GetDirectoryName(_path)!); File.WriteAllText(_path, JsonSerializer.Serialize(_cache.Values.Select(b => b.ToDto()).ToList(), Options)); }
-    
-    public IReadOnlyList<BookCopy> List() { EnsureLoaded(); return _cache.Values.ToList(); }
-    public BookCopy? GetById(string id) { EnsureLoaded(); return _cache.GetValueOrDefault(id); }
-    public void Add(BookCopy item) { EnsureLoaded(); if (_cache.ContainsKey(item.Id)) throw new InvalidOperationException("Дубль"); _cache.Add(item.Id, item); Flush(); }
-    public void Update(BookCopy item) { EnsureLoaded(); _cache[item.Id] = item; Flush(); }
-    public bool Remove(string id) { EnsureLoaded(); if (!_cache.Remove(id)) return false; Flush(); return true; }
-    // БОНУС 2
-    public IEnumerable<BookCopy> Search(Func<BookCopy, bool> predicate) => List().Where(predicate);
+
+    public void Add(BookCopy book)
+    {
+        File.AppendAllLines(_path, new[] { $"{book.Id};{book.Isbn};{book.IsIssued}" });
+    }
+
+    public BookCopy? GetById(string id) => GetAll().FirstOrDefault(b => b.Id == id);
+
+    // ДОДАНО: реалізація відсутніх методів
+    public IEnumerable<BookCopy> GetAll()
+    {
+        if (!File.Exists(_path)) return Enumerable.Empty<BookCopy>();
+        var lines = File.ReadAllLines(_path);
+        var result = new List<BookCopy>();
+        foreach (var line in lines)
+        {
+            var parts = line.Split(';');
+            if (parts.Length >= 2)
+            {
+                var book = BookCopy.Create(parts[0], parts[1]);
+                if (parts.Length >= 3 && bool.TryParse(parts[2], out var issued))
+                {
+                    book.IsIssued = issued;
+                }
+                result.Add(book);
+            }
+        }
+        return result;
+    }
+
+    public void Update(BookCopy book)
+    {
+        var all = GetAll().ToList();
+        var index = all.FindIndex(b => b.Id == book.Id);
+        if (index >= 0)
+        {
+            all[index] = book;
+            File.WriteAllLines(_path, all.Select(b => $"{b.Id};{b.Isbn};{b.IsIssued}"));
+        }
+    }
 }
