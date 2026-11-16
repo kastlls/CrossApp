@@ -2,58 +2,70 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using Core.Abstractions;
 using Core.Domain;
+using Core.Exceptions;
 
 namespace Core.Storage;
 
-public class FileBookStore : IBookStore
+public sealed class FileBookStore : IBookStore
 {
     private readonly string _path;
+    private readonly Dictionary<string, BookCopy> _cache = new();
+    private bool _loaded;
+
+    private static readonly JsonSerializerOptions Options = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    private sealed record StoredBookDto(string Id, string Isbn, bool IsIssued);
 
     public FileBookStore(string path)
     {
-        _path = path;
-        if (!File.Exists(_path)) File.WriteAllText(_path, "");
+        _path = path ?? throw new ArgumentNullException(nameof(path));
     }
 
-    public void Add(BookCopy book)
+    private void EnsureLoaded()
     {
-        File.AppendAllLines(_path, new[] { $"{book.Id};{book.Isbn};{book.IsIssued}" });
-    }
-
-    public BookCopy? GetById(string id) => GetAll().FirstOrDefault(b => b.Id == id);
-
-    // ДОДАНО: реалізація відсутніх методів
-    public IEnumerable<BookCopy> GetAll()
-    {
-        if (!File.Exists(_path)) return Enumerable.Empty<BookCopy>();
-        var lines = File.ReadAllLines(_path);
-        var result = new List<BookCopy>();
-        foreach (var line in lines)
+        if (_loaded) return;
+        if (!File.Exists(_path)) { _loaded = true; return; }
+        try
         {
-            var parts = line.Split(';');
-            if (parts.Length >= 2)
+            var json = File.ReadAllText(_path);
+            if (string.IsNullOrWhiteSpace(json)) { _loaded = true; return; }
+            var dtos = JsonSerializer.Deserialize<List<StoredBookDto>>(json, Options) ?? [];
+            _cache.Clear();
+            foreach (var dto in dtos)
             {
-                var book = BookCopy.Create(parts[0], parts[1]);
-                if (parts.Length >= 3 && bool.TryParse(parts[2], out var issued))
-                {
-                    book.IsIssued = issued;
-                }
-                result.Add(book);
+                var book = BookCopy.Create(dto.Id, dto.Isbn);
+                book.IsIssued = dto.IsIssued;
+                _cache[book.Id] = book;
             }
+            _loaded = true;
         }
-        return result;
+        catch (JsonException ex)
+        {
+            throw new DomainException($"Пошкоджений файл сховища {_path}: {ex.Message}", ex);
+        }
     }
 
-    public void Update(BookCopy book)
+    private void Flush()
     {
-        var all = GetAll().ToList();
-        var index = all.FindIndex(b => b.Id == book.Id);
-        if (index >= 0)
-        {
-            all[index] = book;
-            File.WriteAllLines(_path, all.Select(b => $"{b.Id};{b.Isbn};{b.IsIssued}"));
-        }
+        var dtos = _cache.Values.Select(b => new StoredBookDto(b.Id, b.Isbn, b.IsIssued)).ToList();
+        var dir = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        var tmp = _path + ".tmp";
+        File.WriteAllText(tmp, JsonSerializer.Serialize(dtos, Options));
+        File.Move(tmp, _path, overwrite: true);
     }
+
+    public void Add(BookCopy book) { EnsureLoaded(); _cache[book.Id] = book; Flush(); }
+    public BookCopy? GetById(string id) { EnsureLoaded(); return _cache.TryGetValue(id, out var b) ? b : null; }
+    public IEnumerable<BookCopy> GetAll() { EnsureLoaded(); return _cache.Values.ToList(); }
+    public void Update(BookCopy book) { EnsureLoaded(); _cache[book.Id] = book; Flush(); }
 }

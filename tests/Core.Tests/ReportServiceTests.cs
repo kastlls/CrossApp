@@ -7,7 +7,7 @@ public class ReportServiceTests
     [Fact] // 3) Звіт: перевірка правильності підрахунку
     public void Totals_CountsCorrectly()
     {
-        var items = TestData.Items(); // Тестовий набір має 3 книги, 1 з них видана
+        var items = TestData.Items(); 
         var totals = ReportService.Totals(items);
         Assert.Equal(1, totals.Issued);
     }
